@@ -36,7 +36,7 @@ Assurez-vous que les outils suivants sont installés sur votre machine hôte :
 
 ### 1. Cloner le dépôt
 ```bash
-git clone <URL_DU_DEPOT_GITHUB>
+git clone https://github.com/Schneider509/weather-pipeline.git
 cd weather-pipeline
 ```
 
