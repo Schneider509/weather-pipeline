@@ -7,19 +7,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Configuration de la page Streamlit
 st.set_page_config(
     page_title="Weather Analytics Dashboard",
     page_icon="🌤️",
     layout="wide"
 )
 
-# Connexion mise en cache à PostgreSQL
 @st.cache_resource
 def get_database_connection():
     user = os.getenv("DB_USER", "dev_user")
     password = os.getenv("DB_PASSWORD", "dev_password")
-    host = "localhost"  # Port mappé sur l'hôte local
+   # Force localhost si exécuté en local sur le Mac
+    host = os.getenv("STREAMLIT_DB_HOST", "localhost")
     port = os.getenv("DB_PORT", "5432")
     db_name = os.getenv("DB_NAME", "weather_db")
     
@@ -67,26 +66,48 @@ selected_city = st.sidebar.selectbox(
     index=cities_available.index("Paris") if "Paris" in cities_available else 0
 )
 
-# Filtrage par ville
-df_city = df[df["city"] == selected_city].sort_values("timestamp")
+# Filtre temporel
+min_date = df["timestamp"].min().date()
+max_date = df["timestamp"].max().date()
+
+selected_dates = st.sidebar.date_input(
+    "Plage de dates :",
+    value=(min_date, max_date),
+    min_value=min_date,
+    max_value=max_date
+)
+
+# Application des filtres
+if isinstance(selected_dates, (tuple, list)) and len(selected_dates) == 2:
+    start_d, end_d = selected_dates
+    mask_date = (df["timestamp"].dt.date >= start_d) & (df["timestamp"].dt.date <= end_d)
+else:
+    mask_date = True
+
+df_city = df[(df["city"] == selected_city) & mask_date].sort_values("timestamp")
+
+if df_city.empty:
+    st.warning("Aucune observation disponible pour la plage sélectionnée.")
+    st.stop()
+
 latest_record = df_city.iloc[-1]
 
-# KPIs principaux
+# KPIs
 st.subheader(f"Dernières observations pour **{selected_city}** ({latest_record['timestamp'].strftime('%d/%m/%Y %H:%M')})")
 
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 kpi1.metric("🌡️ Température", f"{latest_record['temperature_celsius']} °C")
 kpi2.metric("💧 Humidité", f"{latest_record['humidity_percent']} %")
 kpi3.metric("💨 Vent", f"{latest_record['wind_speed_kmh']} km/h")
-kpi4.metric("📊 Données collectées", f"{len(df_city):,} pts")
+kpi4.metric("📊 Données affichées", f"{len(df_city):,} pts")
 
 st.divider()
 
-# Graphiques temporels
+# Graphiques
 col_left, col_right = st.columns(2)
 
 with col_left:
-    st.markdown("### Évolution des Températures (30 derniers jours)")
+    st.markdown("### Évolution des températures")
     fig_temp = px.line(
         df_city, 
         x="timestamp", 
@@ -98,7 +119,7 @@ with col_left:
     st.plotly_chart(fig_temp, use_container_width=True)
 
 with col_right:
-    st.markdown("### Évolution du Vent & de l'Humidité")
+    st.markdown("### Évolution du vent & de l'humidité")
     fig_wind = px.line(
         df_city, 
         x="timestamp", 
@@ -111,7 +132,7 @@ with col_right:
 
 # Carte thermique nationale
 st.divider()
-st.subheader("🗺️ Vue d'ensemble : Températures actuelles à travers la France")
+st.subheader("🗺️ Vue d'ensemble : Dernières températures à travers la France")
 
 latest_per_city = df.sort_values("timestamp").groupby("city").last().reset_index()
 

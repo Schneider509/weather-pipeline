@@ -1,6 +1,6 @@
-# 🌤️ Weather Data Pipeline & Analytics Dashboard
+# 🌤️ French Cities Weather Data Pipeline
 
-Pipeline ETL complet et tableau de bord interactif pour collecter, stocker et analyser les relevés météorologiques horaires des 50 plus grandes métropoles françaises sur 30 jours consolidés.
+Pipeline de données complet de bout en bout : extraction automatisée d'historiques météorologiques pour 50 villes françaises, stockage relationnel idempotent, orchestration avec Apache Airflow et restitution visuelle sur un tableau de bord conteneurisé.
 
 ---
 
@@ -8,143 +8,117 @@ Pipeline ETL complet et tableau de bord interactif pour collecter, stocker et an
 
 ```text
 weather-pipeline/
-├── docker-compose.yml   # Déploiement du conteneur PostgreSQL 15
-├── etl.py               # Extraction API, géocodage, transformation et Upsert
-├── app.py               # Dashboard interactif Streamlit & visualisations Plotly
-├── requirements.txt     # Dépendances Python verrouillées
-├── .env.example         # Gabarit des identifiants et variables d'environnement
-├── .gitignore           # Exclusion du dossier .venv et du fichier .env
-└── README.md            # Documentation opérationnelle du projet
+├── dags/
+│   └── weather_etl_dag.py   # Orchestration horaire Airflow
+├── app.py                   # Dashboard analytique Streamlit & visualisations Plotly
+├── etl.py                   # Extraction API, géocodage, transformation et Upsert
+├── Dockerfile               # Conteneurisation de l'application Streamlit
+├── docker-compose.yml       # Stack multi-conteneurs (Airflow, Postgres, Streamlit)
+├── requirements.txt         # Dépendances Python verrouillées
+├── .env.example             # Gabarit des variables d'environnement
+├── .gitignore               # Fichiers et dossiers exclus du versionnement
+└── README.md                # Documentation opérationnelle du projet
 ```
 
-* **Extraction & Géocodage :** Récupération dynamique des coordonnées GPS des 50 villes puis appel à l'API d'archive Open-Meteo pour extraire 30 jours d'historique horaire consolidé.
-* **Stockage Idempotent :** PostgreSQL 15 orchestré via Docker Compose. Les insertions reposent sur une contrainte d'unicité `PRIMARY KEY (city, timestamp)` et un pattern `INSERT ... ON CONFLICT DO UPDATE` (Upsert), évitant tout doublon en cas de réexécution.
-* **Visualisation Analytique :** Application web Streamlit connectée à la base de données locale avec filtres temporels, KPIs et comparateur multi-villes.
+```text
+[ Open-Meteo API ]
+        │
+        ▼ (Extraction horaire automatisée)
+[ Apache Airflow DAG ] ───▶ [ Réseau Docker Interne ]
+        │
+        ▼ (Pattern Upsert idempotent)
+[ PostgreSQL DB ] (cities_weather)
+        │
+        ▼ (Requêtes SQL avec cache)
+[ Streamlit Dashboard ] ───▶ Navigateur (http://localhost:8501)
+```
+
+* **Extraction & Géocodage :** Récupération dynamique des coordonnées GPS des 50 métropoles françaises puis interrogation de l'API d'archive Open-Meteo pour extraire 30 jours d'historique horaire consolidé (température, humidité, vent).
+* **Stockage Idempotent :** PostgreSQL 15 hébergé sous Docker. Les insertions reposent sur une clé primaire composite `(city, timestamp)` et une clause `ON CONFLICT DO UPDATE` (Upsert), garantissant l'absence de doublons même en cas de rattrapage ou réexécution.
+* **Orchestration :** Apache Airflow 2.8 gère la planification horaire (`@hourly`), la surveillance des tâches et les politiques de réessai automatique.
+* **Visualisation Analytique :** Application web Streamlit conteneurisée offrant des indicateurs clés (KPIs) en temps réel, des filtres dynamiques par ville et dates, des graphiques interactifs et une cartographie thermique nationale (`scatter_map`).
 
 ---
 
 ## 📋 Prérequis
 
-Assurez-vous que les outils suivants sont installés sur votre machine hôte :
-* **Python 3.10+**
 * **Docker Desktop** (avec Docker Compose actif)
 * **Git**
 
 ---
 
-## 🚀 Guide de Démarrage Rapide
+## 🚀 Déploiement Rapide (100 % Docker)
+
+L'intégralité des services s'exécute dans des conteneurs isolés et communicants.
 
 ### 1. Cloner le dépôt
 ```bash
-git clone https://github.com/Schneider509/weather-pipeline.git
+git clone [https://github.com/Schneider509/weather-pipeline.git](https://github.com/Schneider509/weather-pipeline.git)
 cd weather-pipeline
 ```
 
-### 2. Configurer l'environnement virtuel Python
-Créez un environnement isolé pour éviter tout conflit de dépendances avec votre système :
-```bash
-# Création de l'environnement virtuel
-python3 -m venv .venv
-
-# Activation sous macOS / Linux :
-source .venv/bin/activate
-
-# Activation sous Windows (PowerShell) :
-# .venv\Scripts\Activate.ps1
-```
-
-### 3. Installer les dépendances
-Installez les paquets requis via `pip` :
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## ⚙️ Configuration des Variables d'Environnement
-
-Créez votre fichier local `.env` en dupliquant le modèle fourni :
+### 2. Configurer les variables d'environnement
 ```bash
 cp .env.example .env
 ```
 
-### Détail des paramètres requis :
+### 3. Démarrer l'ensemble de la stack
+```bash
+docker compose up -d --build
+```
 
-| Paramètre | Rôle | Valeur locale par défaut |
+Cette commande initialise et lance :
+* **weather_postgres :** Base de données applicative météo (port `5432`).
+* **airflow_postgres :** Base de métadonnées interne d'Airflow.
+* **airflow_init :** Migration de schéma et création automatique de l'utilisateur admin.
+* **airflow_webserver :** Interface d'administration Airflow (port `8080`).
+* **airflow_scheduler :** Moteur d'exécution des DAGs.
+* **weather_dashboard :** Tableau de bord Streamlit (port `8501`).
+
+---
+
+## 🖥️ Accès aux Interfaces
+
+* **Dashboard Streamlit :** [http://localhost:8501](http://localhost:8501)
+* **Console Apache Airflow :** [http://localhost:8080](http://localhost:8080)
+  * **Identifiant :** `admin`
+  * **Mot de passe :** `admin`
+
+---
+
+## 📊 Modèle de Données
+
+Table : `cities_weather`
+
+| Colonne | Type | Description |
 | :--- | :--- | :--- |
-| `DB_USER` | Identifiant administrateur configuré dans `docker-compose.yml`. | `dev_user` |
-| `DB_PASSWORD` | Mot de passe associé au compte administrateur. | `dev_password` |
-| `DB_HOST` | Hôte du serveur (utilisez `localhost` pour Docker en local). | `localhost` |
-| `DB_PORT` | Port d'écoute exposé sur la machine hôte. | `5432` |
-| `DB_NAME` | Nom de la base de données créée à l'initialisation du conteneur. | `weather_db` |
+| `city` | `VARCHAR` | Nom de la ville (*Clé primaire composite*) |
+| `latitude` | `FLOAT` | Coordonnée GPS Nord |
+| `longitude` | `FLOAT` | Coordonnée GPS Est |
+| `timestamp` | `TIMESTAMP` | Horodatage de l'observation (*Clé primaire composite*) |
+| `temperature_celsius` | `FLOAT` | Température relevée à 2 mètres (°C) |
+| `humidity_percent` | `FLOAT` | Taux d'humidité relative (%) |
+| `wind_speed_kmh` | `FLOAT` | Vitesse du vent à 10 mètres (km/h) |
+| `extracted_at` | `TIMESTAMP` | Horodatage technique d'ingestion |
 
----
-
-## 🐳 Démarrer la Base de Données (Docker)
-
-Lancez l'instance PostgreSQL en arrière-plan :
-```bash
-docker compose up -d
-```
-
-Vérifiez l'état d'exécution du conteneur :
-```bash
-docker compose ps
-```
-
----
-
-## 🔄 Lancer le Pipeline d'Ingestion (ETL)
-
-Exécutez le script d'extraction et d'ingestion :
-```bash
-python etl.py
-```
-
-Le script réalise les opérations suivantes :
-1. Géocodage des 50 métropoles françaises via l'API Open-Meteo.
-2. Téléchargement des séries temporelles horaires des 30 derniers jours (température, humidité, vent).
-3. Normalisation et typage strict des données avec `pandas`.
-4. Ingestion résiliente de plus de **37 000 lignes** via table de staging et fusion Upsert.
-
-Pour contrôler le nombre de lignes insérées directement dans PostgreSQL :
+Pour contrôler le volume de données chargées :
 ```bash
 docker exec -it weather_postgres psql -U dev_user -d weather_db -c "SELECT city, COUNT(*) FROM cities_weather GROUP BY city LIMIT 10;"
 ```
 
 ---
 
-## 📊 Lancer le Dashboard Analytique (Streamlit)
+## 🛑 Arrêt et Maintenance
 
-Démarrez l'application web locale :
-```bash
-streamlit run app.py
-```
-
-L'application s'ouvre automatiquement dans votre navigateur à l'adresse :  
-👉 `http://localhost:8501`
-
-### Fonctionnalités du tableau de bord :
-* Sélecteur de ville avec affichage des métriques clés (température moyenne, extrêmes, rafales maximales).
-* Filtre dynamique sur la plage de dates.
-* Graphique temporel interactif des relevés heure par heure.
-* Comparateur permettant de superposer les courbes de plusieurs villes simultanément.
-* Visualisation tabulaire des données brutes stockées dans PostgreSQL.
-
----
-
-## 🛑 Procédure d'Arrêt
-
-* **Arrêter Streamlit :** Cliquez dans le terminal où tourne l'application et tapez `Ctrl + C`.
-* **Mettre en pause la base PostgreSQL (sans perte de données) :**
+* **Mettre en pause l'ensemble des conteneurs (sans perte de données) :**
   ```bash
   docker compose stop
   ```
-* **Redémarrer la base ultérieurement :**
+* **Redémarrer les services :**
   ```bash
   docker compose start
   ```
-* **Désactiver l'environnement virtuel Python :**
+* **Arrêter et détruire les conteneurs :**
   ```bash
-  deactivate
+  docker compose down
   ```

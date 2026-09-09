@@ -77,6 +77,22 @@ services:
       airflow_init:
         condition: service_completed_successfully
 
+  # 6. Dashboard Streamlit pour visualiser les données météo
+  weather_dashboard:
+    build: .
+    container_name: weather_dashboard
+    restart: always
+    ports:
+      - "8501:8501"
+    environment:
+      - DB_USER=dev_user
+      - DB_PASSWORD=dev_password
+      - DB_PORT=5432
+      - DB_NAME=weather_db
+      - STREAMLIT_DB_HOST=weather_db
+    depends_on:
+      - weather_db
+
 volumes:
   postgres_weather_data:
   airflow_postgres_data:
