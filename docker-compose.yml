@@ -1,6 +1,23 @@
 version: '3.8'
 
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.8.1-python3.9
+  environment:
+    - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@airflow_postgres:5432/airflow
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - ./etl.py:/opt/airflow/etl.py
+    - ./.env:/opt/airflow/.env
+  depends_on:
+    airflow_postgres:
+      condition: service_healthy
+
 services:
+  # 1. Base PostgreSQL applicative (pour tes données météo)
   weather_db:
     image: postgres:15
     container_name: weather_postgres
@@ -14,5 +31,52 @@ services:
     volumes:
       - postgres_weather_data:/var/lib/postgresql/data
 
+  # 2. Base PostgreSQL dédiée aux métadonnées d'Airflow
+  airflow_postgres:
+    image: postgres:13
+    container_name: airflow_postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+
+  # 3. Initialisation de la base Airflow et création du compte admin
+  airflow_init:
+    <<: *airflow-common
+    container_name: airflow_init
+    command: >
+      bash -c "airflow db migrate &&
+      airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin"
+    restart: on-failure
+
+  # 4. Interface Web d'Airflow
+  airflow_webserver:
+    <<: *airflow-common
+    container_name: airflow_webserver
+    restart: always
+    command: webserver
+    ports:
+      - "8080:8080"
+    depends_on:
+      airflow_init:
+        condition: service_completed_successfully
+
+  # 5. Planificateur (Scheduler)
+  airflow_scheduler:
+    <<: *airflow-common
+    container_name: airflow_scheduler
+    restart: always
+    command: scheduler
+    depends_on:
+      airflow_init:
+        condition: service_completed_successfully
+
 volumes:
   postgres_weather_data:
+  airflow_postgres_data:

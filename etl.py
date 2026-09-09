@@ -112,11 +112,10 @@ def load_data(df):
 
     print(f"-> Ingestion réussie : {len(df)} lignes synchronisées dans PostgreSQL.")
 
-if __name__ == "__main__":
+def run_pipeline():
     print(f"--- Démarrage du pipeline : {len(CITIES_LIST)} villes ---")
     
     frames = []
-    # On parcourt bien l'ensemble des villes
     for city_name in set(CITIES_LIST):
         coords = get_coordinates(city_name)
         if coords:
@@ -125,7 +124,7 @@ if __name__ == "__main__":
             df_city = transform_city_weather(raw, city_name)
             if df_city is not None:
                 frames.append(df_city)
-        time.sleep(0.15)  # Pause légère pour respecter les quotas de requêtes
+        time.sleep(0.15)
             
     if frames:
         final_df = pd.concat(frames, ignore_index=True)
@@ -133,3 +132,6 @@ if __name__ == "__main__":
         load_data(final_df)
         
     print("--- Pipeline terminé ---")
+
+if __name__ == "__main__":
+    run_pipeline()
