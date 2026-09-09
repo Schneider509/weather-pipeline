@@ -63,7 +63,7 @@ def transform_city_weather(raw_data, city_name):
         "latitude": raw_data.get("latitude"),
         "longitude": raw_data.get("longitude"),
         "timestamp": hourly.get("time"),
-        "temperature_cels": hourly.get("temperature_2m"),
+        "temperature_celsius": hourly.get("temperature_2m"),
         "humidity_percent": hourly.get("relative_humidity_2m"),
         "wind_speed_kmh": hourly.get("wind_speed_10m")
     })
